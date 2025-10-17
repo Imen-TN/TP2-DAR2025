@@ -1,5 +1,6 @@
 package clientPackage;
 
+import model.Operation; // Import de notre classe
 import java.io.*;
 import java.net.*;
 import java.util.Scanner;
@@ -10,14 +11,10 @@ public class Client {
         try (Socket socket = new Socket("localhost", 1234)) {
             System.out.println("Connecté au serveur. Entrez une opération (ex: 55 * 25) ou 'exit' pour quitter.");
 
-            // Outils pour envoyer et recevoir des chaînes de caractères (CC)
-            // OutputStream -> OutputStreamWriter -> PrintWriter (pour envoyer du texte facilement)
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            // Outils pour envoyer et recevoir des OBJETS
+            ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+            ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
 
-            // InputStream -> InputStreamReader -> BufferedReader (pour lire du texte facilement)
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-            // Outil pour lire l'entrée de l'utilisateur au clavier
             Scanner scanner = new Scanner(System.in);
             String userInput;
 
@@ -25,32 +22,45 @@ public class Client {
                 System.out.print("Opération > ");
                 userInput = scanner.nextLine();
 
-                // Si l'utilisateur tape "exit", on quitte la boucle
                 if ("exit".equalsIgnoreCase(userInput)) {
                     break;
                 }
 
-                // NB: Validation de la syntaxe CÔTÉ CLIENT avant l'envoi
-                // Regex: un ou plusieurs chiffres, espace(s), un opérateur, espace(s), un ou plusieurs chiffres
-                if (!userInput.matches("^\\d+\\s*[+\\-*/]\\s*\\d+$")) {
-                    System.out.println("Erreur: Format de l'opération invalide. Exemples valides : 4 * 5, 100+2, 9 / 3");
-                    continue; // On redemande une nouvelle opération
+                // Valider la syntaxe avant de créer l'objet
+                if (!userInput.matches("^\\d+(\\.\\d+)?\\s*[+\\-*/]\\s*\\d+(\\.\\d+)?$")) {
+                    System.out.println("Erreur: Format invalide. Ex: 4 * 5.2");
+                    continue;
                 }
 
-                // a) Le client envoie l'opération entière sous forme de chaîne de caractères
-                out.println(userInput);
-                System.out.println("Opération '" + userInput + "' envoyée au serveur.");
+                try {
+                    // Parser l'entrée utilisateur pour créer un objet Operation
+                    String[] parts = userInput.trim().split("\\s+");
+                    double op1 = Double.parseDouble(parts[0]);
+                    char operator = parts[1].charAt(0);
+                    double op2 = Double.parseDouble(parts[2]);
 
-                // d) Le client lit et affiche le résultat reçu
-                String serverResponse = in.readLine();
-                System.out.println("Réponse du serveur : " + serverResponse);
+                    Operation operationToSend = new Operation(op1, op2, operator);
+
+                    // b) Le client envoie l'objet au serveur
+                    oos.writeObject(operationToSend);
+                    System.out.println("Objet '" + operationToSend + "' envoyé au serveur.");
+
+                    // g) Le client lit l'objet modifié et affiche le résultat
+                    Operation resultOperation = (Operation) ois.readObject();
+
+                    // Afficher le résultat contenu dans l'objet reçu
+                    System.out.println("Réponse du serveur : " + resultOperation.getResult());
+
+                } catch (Exception e) {
+                    System.err.println("Erreur lors de la création ou l'envoi de l'objet : " + e.getMessage());
+                }
             }
 
             System.out.println("Déconnexion du client.");
             scanner.close();
 
         } catch (IOException e) {
-            System.err.println("Erreur de connexion ou de communication avec le serveur : " + e.getMessage());
+            System.err.println("Erreur de connexion ou de communication : " + e.getMessage());
         }
     }
 }

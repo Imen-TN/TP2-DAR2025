@@ -1,5 +1,6 @@
 package serverPackage;
 
+import model.Operation; // Import de notre classe
 import java.io.*;
 import java.net.*;
 
@@ -9,37 +10,34 @@ public class Server {
         try (ServerSocket serverSocket = new ServerSocket(1234)) {
             System.out.println("Le serveur attend une connexion client sur le port 1234...");
 
-            // Le serveur attend une connexion client
             Socket clientSocket = serverSocket.accept();
             System.out.println("Un client s'est connecté depuis : " + clientSocket.getRemoteSocketAddress());
 
-            // Outils pour recevoir et envoyer des chaînes de caractères (CC)
-            BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-            PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+            // Outils pour envoyer et recevoir des OBJETS
+            // IMPORTANT: L'OutputStream doit être créé AVANT l'InputStream pour éviter un blocage
+            ObjectOutputStream oos = new ObjectOutputStream(clientSocket.getOutputStream());
+            ObjectInputStream ois = new ObjectInputStream(clientSocket.getInputStream());
 
-            String operation;
-            // Le serveur lit les opérations envoyées par le client en boucle
-            // La boucle se termine si le client se déconnecte (in.readLine() renverra null)
-            while ((operation = in.readLine()) != null) {
-                System.out.println("Opération reçue du client : '" + operation + "'");
+            try {
+                // Le serveur est en attente de recevoir un objet
+                while (true) {
+                    // c) Le serveur reçoit l'objet
+                    Operation op = (Operation) ois.readObject();
+                    System.out.println("Reçu l'objet : " + op);
 
-                try {
-                    // b) Le serveur calcule l'opération demandée
-                    String result = calculate(operation);
+                    // d) Le serveur récupère les données et e) effectue le calcul
+                    calculate(op);
 
-                    // c) Le serveur envoie le résultat trouvé au client
-                    out.println(result);
-                    System.out.println("Résultat '" + result + "' envoyé au client.");
-
-                } catch (Exception e) {
-                    // En cas d'erreur de calcul (ex: division par zéro), on informe le client
-                    String errorMessage = "Erreur lors du calcul : " + e.getMessage();
-                    out.println(errorMessage);
-                    System.err.println(errorMessage);
+                    // f) Le serveur renvoie l'objet modifié (avec le résultat) au client
+                    oos.writeObject(op);
+                    System.out.println("Envoyé l'objet avec résultat : " + op.getResult());
                 }
+            } catch (EOFException e) {
+                System.out.println("Le client a fermé la connexion.");
+            } catch (ClassNotFoundException e) {
+                System.err.println("Classe de l'objet non trouvée : " + e.getMessage());
             }
 
-            System.out.println("Le client s'est déconnecté. Fermeture de la connexion.");
             clientSocket.close();
 
         } catch (IOException e) {
@@ -48,46 +46,33 @@ public class Server {
     }
 
     /**
-     * Méthode pour parser et calculer le résultat d'une opération sous forme de chaîne.
-     * @param operation La chaîne de caractères (ex: "55 * 25")
-     * @return Le résultat du calcul sous forme de chaîne.
+     * Calcule le résultat à partir d'un objet Operation et met à jour le champ résultat de l'objet.
+     * @param op L'objet Operation contenant les données à calculer.
      */
-    private static String calculate(String operation) {
-        // On utilise split avec une expression régulière "\\s+" pour séparer par un ou plusieurs espaces
-        String[] parts = operation.trim().split("\\s+");
-
-        // On s'attend à avoir 3 parties : [opérande1, opérateur, opérande2]
-        if (parts.length != 3) {
-            throw new IllegalArgumentException("Format de l'opération invalide.");
-        }
-
-        double operand1 = Double.parseDouble(parts[0]);
-        String operator = parts[1];
-        double operand2 = Double.parseDouble(parts[2]);
-
+    private static void calculate(Operation op) {
         double result;
-
-        switch (operator) {
-            case "+":
-                result = operand1 + operand2;
+        switch (op.getOperator()) {
+            case '+':
+                result = op.getOperand1() + op.getOperand2();
                 break;
-            case "-":
-                result = operand1 - operand2;
+            case '-':
+                result = op.getOperand1() - op.getOperand2();
                 break;
-            case "*":
-                result = operand1 * operand2;
+            case '*':
+                result = op.getOperand1() * op.getOperand2();
                 break;
-            case "/":
-                if (operand2 == 0) {
-                    throw new ArithmeticException("Division par zéro impossible.");
+            case '/':
+                if (op.getOperand2() == 0) {
+                    // On pourrait lancer une exception, mais ici on met un résultat spécial
+                    result = Double.NaN; // "Not a Number" pour représenter une erreur
+                } else {
+                    result = op.getOperand1() / op.getOperand2();
                 }
-                result = operand1 / operand2;
                 break;
             default:
-                throw new IllegalArgumentException("Opérateur non supporté : " + operator);
+                result = Double.NaN; // Opérateur invalide
+                break;
         }
-
-        // On retourne le résultat sous forme de String
-        return String.valueOf(result);
+        op.setResult(result); // Met à jour l'objet directement
     }
 }
